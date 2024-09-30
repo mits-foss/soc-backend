@@ -1,33 +1,20 @@
 from fastapi import FastAPI, HTTPException, Path
 from typing import List, Annotated
 import httpx 
-from authlib.integrations.starlette_client import OAuth
-from starlette.config import Config
 from odmantic import Field, Model, EmbeddedModel, AIOEngine, ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 import os
-  
+
 app = FastAPI(debug=True)
+
 load_dotenv()
 engine = AIOEngine(client=AsyncIOMotorClient(os.getenv("MONGO_URI")),database="soc")
 GITHUB_CLIENT_ID = os.getenv("CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URL = os.getenv("REDIRECT_URL")
-config = Config(".env")
-oauth = OAuth(config)
-
-oauth.register(
-    name='github',
-    client_id=config('CLIENT_ID'),
-    client_secret=config('CLIENT_SECRET'),
-    authorize_url='https://github.com/login/oauth/authorize',
-    access_token_url='https://github.com/login/oauth/access_token',
-    client_kwargs={'scope': 'user:email'},
-    api_base_url='https://api.github.com/',
-)
 
 
 class PullRequest(EmbeddedModel):
@@ -106,5 +93,9 @@ async def github_callback(code: str):
     data = response.json()
     username = data["login"]
     avatar_url = data["avatar_url"]
-    return [access_token,username,avatar_url]
+    user_url = data["html_url"]
+    return [access_token,username,avatar_url,user_url]
     
+    
+    
+
