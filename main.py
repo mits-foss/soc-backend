@@ -29,6 +29,7 @@ class User(Model):
     avatar: str = Field(...)
     points: int = Field(default=0)
     github: str = Field(default="")
+    access_token: str = Field(default="")
     prs: List[PullRequest] = Field(default_factory=list)
 
 class WebUser():
@@ -62,7 +63,14 @@ async def get_user(usertoken: Annotated[str, Path(title="The ID of the item to g
     return jsonable_encoder(user)
 
 @app.get("/login")
-async def github_login():
+async def github_login(usertoken):
+    if usertoken:
+        user = engine.find_one(User, User.usertoken == usertoken)
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {user.access_token}"})
+            if response.status_code == 200:
+                return jsonable_encoder(user)
+
     return RedirectResponse(f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={REDIRECT_URL}")
 
 @app.get("/callback")
@@ -96,6 +104,7 @@ async def github_callback(code: str):
     user_url = data["html_url"]
     return [access_token,username,avatar_url,user_url]
     
-    
-    
-
+@app.post("/register")
+async def user_register(user: User):
+    if user:
+        engine.save(user)
