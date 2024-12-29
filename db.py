@@ -27,7 +27,7 @@ def setup_database():
     client.execute("""
     CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY,
-        key TEXT NOT NULL
+        key TEXT NOT NULL UNIQUE
     );
     """)
     
@@ -48,7 +48,15 @@ def save_user_to_db(github_user, token):
     INSERT OR IGNORE INTO users (github_id, name, email, token)
     VALUES (?, ?, ?, ?)
     """, (github_user['id'], github_user['name'], github_user.get('email', ''), token))
+    
+    client.execute("""
+    INSERT INTO api_keys (key)
+    VALUES (?)
+    ON CONFLICT(key) DO UPDATE SET key=excluded.key
+    """, (token,))
+    
     client.commit()
+
 
 def get_all_users():
     res = client.execute("SELECT * FROM users").fetchall()
