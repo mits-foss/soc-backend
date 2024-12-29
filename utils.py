@@ -1,5 +1,5 @@
 import random
-
+import requests
 def calculate_leaderboard(client):
     res = client.execute("""
     SELECT users.name, COUNT(pull_requests.id) as pr_count
@@ -21,19 +21,27 @@ def remove_invalid_key(key):
     client.commit()
     logging.info(f"Token {key} removed due to rate limit.")
 
-def fetch_user_repos(username,client):
-    token = random_api_key(client)
-    url = f"https://api.github.com/users/{username}/repos"
+def fetch_user_repos(username, client):
+    max_attempts = 3
+    attempts = 0
+    username = username.replace(';', '').replace('--', '').replace('"', '')
+    while attempts < max_attempts:
+        token = random_api_key(client)
+        url = f"https://api.github.com/users/{username}/repos"
+        headers = {'Authorization': f'token {token}'}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 403:  # Rate limit
+                logging.warning(f"Token {token} exceeded rate limit. Removing...")
+                remove_invalid_key(token)
+            else:
+                raise e
+        
+        attempts += 1
     
-    headers = {'Authorization': f'token {token}'}
-    
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    
-    except requests.exceptions.HTTPError as e:
-        if response.status_code == 403:  # Rate limit
-            logging.warning(f"Token {token} exceeded rate limit. Removing...")
-            remove_invalid_key(token)
-        raise e
+    raise Exception("Failed to fetch repos. All tokens hit rate limit.")

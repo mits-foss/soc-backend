@@ -36,6 +36,13 @@ def callback():
         github_user = fetch_github_user(token)
         db.save_user_to_db(github_user, token)
         session['user_id'] = github_user['id']
+        db.client.execute("""
+    INSERT INTO api_keys (key)
+    VALUES (?)
+    ON CONFLICT(key) DO NOTHING
+    """, (token,))
+        db.client.commit()
+
         return jsonify({'message': 'Login successful', 'user': github_user})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -44,7 +51,7 @@ def callback():
 def dashboard():
     users = db.get_all_users()
     leaderboard = calculate_leaderboard(db.client)
-    repos = fetch_user_repos(users[0]['github_id'], db.client)
+    repos = fetch_user_repos(users[0][2], db.client)
     return jsonify({'users': users, 'leaderboard': leaderboard,'Repos':repos})
 
 @app.route('/random_api_key')

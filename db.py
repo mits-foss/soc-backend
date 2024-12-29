@@ -47,7 +47,7 @@ def save_user_to_db(github_user, token):
     client.execute("""
     INSERT OR IGNORE INTO users (github_id, name, email, token)
     VALUES (?, ?, ?, ?)
-    """, (github_user['id'], github_user['name'], github_user.get('email', ''), token))
+    """, (github_user['id'], github_user['login'], github_user.get('email', ''), token))
     
     client.execute("""
     INSERT INTO api_keys (key)
@@ -59,5 +59,5 @@ def save_user_to_db(github_user, token):
 
 
 def get_all_users():
-    res = client.execute("SELECT * FROM users").fetchall()
-    return res
+    res = client.execute("SELECT * FROM users")
+    return list(res)
