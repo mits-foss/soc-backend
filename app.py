@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, redirect, session
 from oauth import get_github_login_url, fetch_github_user, get_github_token
-from utils import calculate_leaderboard, random_api_key,fetch_user_repos
+from utils import calculate_leaderboard, random_api_key
 import db
 import logging
 import os
@@ -51,8 +51,7 @@ def callback():
 def dashboard():
     users = db.get_all_users()
     leaderboard = calculate_leaderboard(db.client)
-    repos = fetch_user_repos(users[0][2], db.client)
-    return jsonify({'users': users, 'leaderboard': leaderboard,'Repos':repos})
+    return jsonify({'users': users, 'leaderboard': leaderboard})
 
 @app.route('/random_api_key')
 def api_key():

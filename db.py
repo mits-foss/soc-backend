@@ -2,7 +2,8 @@ import os
 import sqlite3
 import logging
 from dotenv import load_dotenv
-
+from utils import fetch_user_repos
+import db
 load_dotenv()
 
 DB_PATH = os.getenv('SQLITE_DB_PATH', './app.db')
@@ -59,5 +60,29 @@ def save_user_to_db(github_user, token):
 
 
 def get_all_users():
-    res = client.execute("SELECT * FROM users")
-    return list(res)
+    res = client.execute("SELECT * FROM users").fetchall()
+    users = []
+
+    for row in res:
+        github_username = row[2]  # Assuming username is at index 2
+        try:
+            repos = fetch_user_repos(github_username, db.client)
+            print(repos)
+            # Extract repo names and last commit dates
+            repo_details = [
+                {
+                    'repo_name': repo['name'],
+                    'last_commit': repo['updated_at']  # 'updated_at' is the last pushed/commit time
+                }
+                for repo in repos
+            ]
+        except Exception as e:
+            logging.error(f"Failed to fetch repos for {github_username}: {str(e)}")
+            repo_details = [] 
+        users.append({
+            'SOCid': row[0],  
+            'username': github_username,
+            'email': row[3],
+            'repos': repo_details
+        })    
+    return users
