@@ -1,7 +1,7 @@
 import requests
 import os
 from dotenv import load_dotenv
-
+import logging
 load_dotenv()
 
 CLIENT_ID = os.getenv('GITHUB_CLIENT_ID')
@@ -13,7 +13,7 @@ def get_github_login_url():
         f"https://github.com/login/oauth/authorize"
         f"?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=repo,user"
     )
-def fetch_github_user(token=None):
+def fetch_github_user(client,token=None):
     max_attempts=3
     attempts =0
     while attempts<max_attempts:
@@ -49,6 +49,13 @@ def get_github_token(code):
         },
         headers={'Accept': 'application/json'},
     )
-    response.raise_for_status()
-    return response.json()['access_token']
-
+    data = response.json()
+    
+    # Log full response for debugging
+    logging.debug(f"OAuth Response: {data}")
+    
+    if 'access_token' not in data:
+        error_message = data.get('error_description', 'Unknown error during token exchange')
+        raise Exception(f"Failed to retrieve access token from GitHub: {error_message}")
+    
+    return data['access_token']
