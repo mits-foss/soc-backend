@@ -5,7 +5,7 @@ import db
 import logging
 import os
 from dotenv import load_dotenv
-from db import client
+from db import client, token_status
 
 
 load_dotenv()
@@ -72,6 +72,10 @@ def dashboard():
         ]
 
     return jsonify({'users': users, 'leaderboard': leaderboard})
+@app.route('/token_status')
+def token_status():
+    tokens = db.client.execute("SELECT key, last_used FROM api_keys").fetchall()
+    return jsonify({'active_tokens': tokens})
 
 @app.route('/random_api_key')
 def api_key():

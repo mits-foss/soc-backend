@@ -86,3 +86,15 @@ def get_all_users():
             'repos': repo_details
         })    
     return users
+def validate_tokens(client):
+    tokens = client.execute("SELECT key FROM api_keys").fetchall()
+    for token in tokens:
+        response = requests.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"token {token[0]}"}
+        )
+        if response.status_code == 401:  # Token is invalid
+            logging.warning(f"Removing invalid token: {token[0]}")
+            remove_invalid_key(client, token[0])
+        else:
+            logging.info(f"Token {token[0]} is valid.")
