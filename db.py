@@ -11,7 +11,10 @@ DB_PATH = os.getenv('SQLITE_DB_PATH', './app.db')
 
 def connect_db():
     logging.debug("Connecting to database...")
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    if not isinstance(conn, sqlite3.Connection):
+        raise Exception("Failed to establish database connection.")
+    return conn
 
 # Initialize the client on module load
 client = connect_db()
@@ -32,7 +35,8 @@ def setup_database():
     client.execute("""
     CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY,
-        key TEXT NOT NULL UNIQUE
+        key TEXT NOT NULL,
+        UNIQUE(key)
     );
     """)
     
@@ -62,14 +66,13 @@ def save_user_to_db(github_user, email, phone, token):
     client.execute("""
     INSERT OR IGNORE INTO users (github_id, name, email, phone_no, token)
     VALUES (?, ?, ?, ?, ?)
-    """, (github_user['id'], github_user['login'], email, phone, token))
-    
-    client.execute("""
-    INSERT INTO api_keys (key)
-    VALUES (?)
-    ON CONFLICT(key) DO UPDATE SET key=excluded.key
-    """, (token,))
-    
+    """, (
+        github_user['login'],  # Use 'login' instead of 'id'
+        github_user['name'],
+        email,
+        phone,
+        token
+    ))
     client.commit()
 
 def get_all_users():
@@ -77,7 +80,7 @@ def get_all_users():
     users = []
 
     for row in res:
-        github_username = row[2]
+        github_username = row[1]
         try:
             repos = fetch_user_repos(github_username, client)
             repo_details = [

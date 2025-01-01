@@ -5,7 +5,6 @@ import db
 import logging
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
 app = Flask(__name__)
@@ -15,9 +14,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Ensure DB connection is valid
 def ensure_db_connection():
-    if not isinstance(db.client, db.sqlite3.Connection):
-        db.client = db.connect_db()
-
+    logging.warning(f"db.client type before check: {type(db.client)}")
+    db.client = db.connect_db()
+    
 @app.before_request
 def init_db():
     if not hasattr(app, 'db_initialized'):
@@ -28,6 +27,7 @@ def init_db():
 def login():
     return redirect(get_github_login_url())
 
+
 @app.route('/callback')
 def callback():
     code = request.args.get('code')
@@ -36,25 +36,30 @@ def callback():
 
     try:
         token = get_github_token(code)
-        github_user = fetch_github_user(token)
-        
-        session['temp_user'] = github_user
-        session['temp_token'] = token
+        ensure_db_connection()  # Ensure db.client is valid before use
+        github_user = fetch_github_user(db.client, token)
 
-        ensure_db_connection()  # Make sure DB is connected
+        # Example values for email and phone (replace with form input if necessary)
+        email = github_user.get('email', 'default@example.com')  # Use GitHub email or default
+        phone = "N/A"  # Placeholder for phone number if not provided
+
+        # Save user details to DB
+        db.save_user_to_db(github_user, email, phone, token)
+        
         db.client.execute("""
-            INSERT INTO api_keys (key)
-            VALUES (?)
-            ON CONFLICT(key) DO NOTHING
+        INSERT INTO api_keys (key)
+        VALUES (?)
+        ON CONFLICT(key) DO NOTHING
         """, (token,))
         db.client.commit()
 
-        # Render form for email and phone input
-        return render_template('email_phone_form.html', github_user=github_user)
+        session['user_id'] = github_user['id']
+        return jsonify({'message': 'Login successful', 'user': github_user})
     
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")
-        return redirect('/login')
+        return redirect('/login')  # Retry OAuth flow
+
 
 @app.route('/submit_user', methods=['POST'])
 def submit_user():
