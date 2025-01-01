@@ -2,16 +2,18 @@ import os
 import sqlite3
 import logging
 from dotenv import load_dotenv
-from utils import fetch_user_repos
 import requests
-import db
+from utils import fetch_user_repos
+
 load_dotenv()
 
 DB_PATH = os.getenv('SQLITE_DB_PATH', './app.db')
 
 def connect_db():
+    logging.debug("Connecting to database...")
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
+# Initialize the client on module load
 client = connect_db()
 
 def setup_database():
@@ -44,6 +46,7 @@ def setup_database():
         FOREIGN KEY(user_id) REFERENCES users(id)
     );
     """)
+    
     client.execute("""
     CREATE TABLE IF NOT EXISTS leaderboard (
         user_id INTEGER PRIMARY KEY,
@@ -60,6 +63,7 @@ def save_user_to_db(github_user, email, phone, token):
     INSERT OR IGNORE INTO users (github_id, name, email, phone_no, token)
     VALUES (?, ?, ?, ?, ?)
     """, (github_user['id'], github_user['login'], email, phone, token))
+    
     client.execute("""
     INSERT INTO api_keys (key)
     VALUES (?)
@@ -68,34 +72,33 @@ def save_user_to_db(github_user, email, phone, token):
     
     client.commit()
 
-
 def get_all_users():
     res = client.execute("SELECT * FROM users").fetchall()
     users = []
 
     for row in res:
-        github_username = row[2]  # Assuming username is at index 2
+        github_username = row[2]
         try:
-            repos = fetch_user_repos(github_username, db.client)
-            print(repos)
-            # Extract repo names and last commit dates
+            repos = fetch_user_repos(github_username, client)
             repo_details = [
                 {
                     'repo_name': repo['name'],
-                    'last_commit': repo['updated_at']  # 'updated_at' is the last pushed/commit time
+                    'last_commit': repo['updated_at']
                 }
                 for repo in repos
             ]
         except Exception as e:
             logging.error(f"Failed to fetch repos for {github_username}: {str(e)}")
             repo_details = [] 
+        
         users.append({
-            'SOCid': row[0],  
+            'SOCid': row[0],
             'username': github_username,
             'email': row[3],
             'repos': repo_details
-        })    
+        })
     return users
+
 def validate_tokens(client):
     tokens = client.execute("SELECT key FROM api_keys").fetchall()
     for token in tokens:
