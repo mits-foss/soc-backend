@@ -2,6 +2,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import logging
+from utils import random_api_key
 load_dotenv()
 
 CLIENT_ID = os.getenv('GITHUB_CLIENT_ID')

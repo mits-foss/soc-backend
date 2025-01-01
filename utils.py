@@ -18,6 +18,7 @@ def random_api_key(client):
     if not res:
         raise Exception("No API keys available. Please log in users to add tokens.")
     return random.choice(res)[0]
+    
 def remove_invalid_key(client, key):
     logging.warning(f"Removing token {key} from db due to invalidity.")
     client.execute("DELETE FROM api_keys WHERE key = ?", (key,))

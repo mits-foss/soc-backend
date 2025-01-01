@@ -3,6 +3,7 @@ import sqlite3
 import logging
 from dotenv import load_dotenv
 from utils import fetch_user_repos
+import requests
 import db
 load_dotenv()
 
@@ -15,7 +16,7 @@ client = connect_db()
 
 def setup_database():
     logging.debug("Setting up database.")
-     client.execute("""
+    client.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
         github_id TEXT UNIQUE NOT NULL,
@@ -43,14 +44,22 @@ def setup_database():
         FOREIGN KEY(user_id) REFERENCES users(id)
     );
     """)
+    client.execute("""
+    CREATE TABLE IF NOT EXISTS leaderboard (
+        user_id INTEGER PRIMARY KEY,
+        total_prs INTEGER DEFAULT 0,
+        total_commits INTEGER DEFAULT 0,
+        total_lines INTEGER DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+    """)
     logging.debug("Database setup complete.")
 
-def save_user_to_db(github_user, token):
+def save_user_to_db(github_user, email, phone, token):
     client.execute("""
-    INSERT OR IGNORE INTO users (github_id, name, email, token)
-    VALUES (?, ?, ?, ?)
-    """, (github_user['id'], github_user['login'], github_user.get('email', ''), token))
-    
+    INSERT OR IGNORE INTO users (github_id, name, email, phone_no, token)
+    VALUES (?, ?, ?, ?, ?)
+    """, (github_user['id'], github_user['login'], email, phone, token))
     client.execute("""
     INSERT INTO api_keys (key)
     VALUES (?)

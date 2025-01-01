@@ -5,7 +5,7 @@ import db
 import logging
 import os
 from dotenv import load_dotenv
-from db import client, token_status
+from db import client, validate_tokens
 
 
 load_dotenv()
@@ -37,7 +37,14 @@ def callback():
         
         session['temp_user'] = github_user
         session['temp_token'] = token
+        db.client = db.connect_db()
 
+        db.client.execute("""
+            INSERT INTO api_keys (key)
+            VALUES (?)
+            ON CONFLICT(key) DO NOTHING
+        """, (token,))
+        db.client.commit()
         # Render form for email and phone input
         return render_template('email_phone_form.html', github_user=github_user)
     
@@ -65,7 +72,10 @@ def submit_user():
 @app.route('/refresh_login')
 def refresh_login():
     session.clear()
+    db.client.execute("DELETE FROM api_keys WHERE key NOT IN (SELECT token FROM users)")
+    db.client.commit()
     return redirect(get_github_login_url())
+
 
 @app.route('/dashboard')
 def dashboard():
@@ -89,7 +99,7 @@ def dashboard():
 
 @app.route('/token_status')
 def token_status():
-    tokens = db.client.execute("SELECT key, last_used FROM api_keys").fetchall()
+    tokens = db.client.execute("SELECT key FROM api_keys").fetchall()
     return jsonify({'active_tokens': tokens})
 
 @app.route('/random_api_key')
