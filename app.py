@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, redirect, session
+from flask import Flask, jsonify, request, redirect, session,render_template, url_for
 from oauth import get_github_login_url, fetch_github_user, get_github_token
 from utils import calculate_leaderboard, random_api_key, fetch_user_repos
 import db
@@ -33,26 +33,40 @@ def callback():
 
     try:
         token = get_github_token(code)
-        github_user = fetch_github_user(db.client, token)
-        db.save_user_to_db(github_user, token)
+        github_user = fetch_github_user(token)
         
-        db.client.execute("""
-        INSERT INTO api_keys (key)
-        VALUES (?)
-        ON CONFLICT(key) DO NOTHING
-        """, (token,))
-        db.client.commit()
+        session['temp_user'] = github_user
+        session['temp_token'] = token
 
-        session['user_id'] = github_user['id']
-        return jsonify({'message': 'Login successful', 'user': github_user})
+        # Render form for email and phone input
+        return render_template('email_phone_form.html', github_user=github_user)
     
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")
-        return redirect('/login')  # Retry OAuth flow
+        return redirect('/login')
+
+
+@app.route('/submit_user', methods=['POST'])
+def submit_user():
+    email = request.form['email']
+    phone = request.form['phone']
+    github_user = session.get('temp_user')
+    token = session.get('temp_token')
+
+    if 'mgits' not in email:
+        return jsonify({'error': 'Only MGITS users are allowed'})
+
+    db.save_user_to_db(github_user, email, phone, token)
+    session.pop('temp_user')
+    session.pop('temp_token')
+
+    return redirect('/dashboard')
+
 @app.route('/refresh_login')
 def refresh_login():
     session.clear()
     return redirect(get_github_login_url())
+
 @app.route('/dashboard')
 def dashboard():
     users = db.get_all_users()
@@ -72,6 +86,7 @@ def dashboard():
         ]
 
     return jsonify({'users': users, 'leaderboard': leaderboard})
+
 @app.route('/token_status')
 def token_status():
     tokens = db.client.execute("SELECT key, last_used FROM api_keys").fetchall()
@@ -81,6 +96,17 @@ def token_status():
 def api_key():
     key = random_api_key(db.client)
     return jsonify({'api_key': key})
+
+@app.route('/leaderboard')
+def leaderboard():
+    leaderboard_data = db.client.execute("""
+    SELECT users.name, leaderboard.total_prs
+    FROM leaderboard
+    JOIN users ON leaderboard.user_id = users.id
+    ORDER BY leaderboard.total_prs DESC
+    """).fetchall()
+
+    return jsonify({'leaderboard': leaderboard_data})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

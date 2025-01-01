@@ -54,3 +54,24 @@ def fetch_user_repos(username, client):
         attempts += 1
 
     raise Exception("Failed to fetch repos. All tokens invalid or rate-limited.")
+def update_leaderboard(client):
+    client.execute("""
+    INSERT INTO leaderboard (user_id, total_prs)
+    SELECT user_id, COUNT(*)
+    FROM pull_requests
+    GROUP BY user_id
+    ON CONFLICT(user_id) DO UPDATE SET
+    total_prs = excluded.total_prs
+    """)
+    client.commit()
+def load_filter_list():
+    with open('filter.txt', 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+def fetch_filtered_prs(client):
+    repos = load_filter_list()
+    
+    for repo in repos:
+        prs = fetch_recent_prs(repo, client)
+        for pr in prs:
+            insert_pull_request(client, pr, repo)

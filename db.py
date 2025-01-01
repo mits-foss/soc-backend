@@ -15,12 +15,13 @@ client = connect_db()
 
 def setup_database():
     logging.debug("Setting up database.")
-    client.execute("""
+     client.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
         github_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         email TEXT,
+        phone_no TEXT,  
         token TEXT NOT NULL
     );
     """)
