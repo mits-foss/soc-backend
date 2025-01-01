@@ -7,7 +7,7 @@ from utils import fetch_user_repos
 
 load_dotenv()
 
-DB_PATH = os.getenv('SQLITE_DB_PATH', './app.db')
+DB_PATH = os.getenv('SQLITE_DB_PATH','./app.db')
 
 def connect_db():
     logging.debug("Connecting to database...")
@@ -16,7 +16,6 @@ def connect_db():
         raise Exception("Failed to establish database connection.")
     return conn
 
-# Initialize the client on module load
 client = connect_db()
 
 def setup_database():
@@ -63,11 +62,12 @@ def setup_database():
     logging.debug("Database setup complete.")
 
 def save_user_to_db(github_user, email, phone, token):
+    logging.debug(f"Inserting into users: {github_user['login']}, {github_user['name']}, {email}, {phone}, {token}")
     client.execute("""
     INSERT OR IGNORE INTO users (github_id, name, email, phone_no, token)
     VALUES (?, ?, ?, ?, ?)
     """, (
-        github_user['login'],  # Use 'login' instead of 'id'
+        github_user['login'],  
         github_user['name'],
         email,
         phone,
@@ -109,7 +109,7 @@ def validate_tokens(client):
             "https://api.github.com/user",
             headers={"Authorization": f"token {token[0]}"}
         )
-        if response.status_code == 401:  # Token is invalid
+        if response.status_code == 401:  
             logging.warning(f"Removing invalid token: {token[0]}")
             remove_invalid_key(client, token[0])
         else:

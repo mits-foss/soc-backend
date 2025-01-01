@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.DEBUG)
 def ensure_db_connection():
     logging.warning(f"db.client type before check: {type(db.client)}")
     db.client = db.connect_db()
-    
+
 @app.before_request
 def init_db():
     if not hasattr(app, 'db_initialized'):
@@ -39,10 +39,31 @@ def callback():
         ensure_db_connection()  # Ensure db.client is valid before use
         github_user = fetch_github_user(db.client, token)
 
-        # Example values for email and phone (replace with form input if necessary)
-        email = github_user.get('email', 'default@example.com')  # Use GitHub email or default
-        phone = "N/A"  # Placeholder for phone number if not provided
+        # Store GitHub user and token temporarily in the session
+        session['temp_user'] = github_user['login']
+        session['temp_token'] = token
 
+        # Render form for email and phone input
+        return render_template('email_phone_form.html', github_user=github_user)
+    
+    except Exception as e:
+        logging.error(f"OAuth callback error: {str(e)}")
+        return redirect('/login')  # Retry OAuth flow
+@app.route('/submit_user', methods=['POST'])
+def submit_user():
+    email = request.form['email']
+    phone = request.form['phone']
+    github_user = session.get('temp_user')
+    token = session.get('temp_token')
+    logging.debug(f"Received: email={email}, phone={phone}, user={github_user}, token={token}")
+    # Verify if the email contains 'mgits'
+    if 'mgits' not in email:
+        return jsonify({'error': f"Received: email={email}, phone={phone}, user={github_user}, token={token}"})
+        logging.debug(f"Received: email={email}, phone={phone}, user={github_user}, token={token}")
+
+
+    try:
+        ensure_db_connection()
         # Save user details to DB
         db.save_user_to_db(github_user, email, phone, token)
         
@@ -53,31 +74,16 @@ def callback():
         """, (token,))
         db.client.commit()
 
+        # Clear temp session data
+        session.pop('temp_user')
+        session.pop('temp_token')
+
         session['user_id'] = github_user['id']
-        return jsonify({'message': 'Login successful', 'user': github_user})
+        return redirect('/dashboard')
     
     except Exception as e:
-        logging.error(f"OAuth callback error: {str(e)}")
-        return redirect('/login')  # Retry OAuth flow
-
-
-@app.route('/submit_user', methods=['POST'])
-def submit_user():
-    email = request.form['email']
-    phone = request.form['phone']
-    github_user = session.get('temp_user')
-    token = session.get('temp_token')
-
-    if 'mgits' not in email:
-        return jsonify({'error': 'Only MGITS users are allowed'})
-
-    ensure_db_connection()
-    db.save_user_to_db(github_user, email, phone, token)
-    
-    session.pop('temp_user')
-    session.pop('temp_token')
-
-    return redirect('/dashboard')
+        logging.error(f"Failed to save user: {str(e)}")
+        return redirect('/login')
 
 @app.route('/refresh_login')
 def refresh_login():
@@ -95,8 +101,7 @@ def dashboard():
     for user in users:
         repos = fetch_user_repos(user['username'], db.client)
         if repos is None:
-            return redirect('/refresh_login')  # Perform redirect if no tokens
-        
+            return redirect('/refresh_login')  
         user['repos'] = [
             {
                 'repo_name': repo['name'],
