@@ -90,6 +90,13 @@ def fetch_user_repos(username, client):
 def update_leaderboard(client):
     try:
         cursor = client.cursor()
+        
+        # Ensure all users exist in leaderboard (initialize with 0s)
+        cursor.execute("""
+        INSERT OR IGNORE INTO leaderboard (user_id, total_prs, total_commits, total_lines)
+        SELECT id, 0, 0, 0 FROM users
+        """)
+        
         cursor.execute("""
         INSERT INTO leaderboard (user_id, total_prs, total_commits, total_lines)
         SELECT users.id, COUNT(pull_requests.pr_id), SUM(pull_requests.total_commits), SUM(pull_requests.total_lines)
@@ -97,17 +104,18 @@ def update_leaderboard(client):
         JOIN pull_requests ON users.github_id = pull_requests.github_login
         GROUP BY users.id
         ON CONFLICT(user_id) DO UPDATE SET
-        total_prs = excluded.total_prs,
-        total_commits = excluded.total_commits,
-        total_lines = excluded.total_lines;
+        total_prs = leaderboard.total_prs + excluded.total_prs,
+        total_commits = leaderboard.total_commits + excluded.total_commits,
+        total_lines = leaderboard.total_lines + excluded.total_lines;
         """)
-        logging.debug("Leaderboard query executed.")
+        
+        logging.debug("Leaderboard updated.")
         client.commit()
         cursor.close()
-        logging.info("Leaderboard updated successfully.")
         
     except Exception as e:
         logging.error(f"Error updating leaderboard: {str(e)}")
+
 
 def load_filter_list():
     with open('filter.txt', 'r') as f:
