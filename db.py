@@ -41,27 +41,26 @@ def setup_database():
     """)
     
     client.execute("""
-    CREATE TABLE IF NOT EXISTS pull_requests (
-        pr_id INTEGER UNIQUE NOT NULL,  
-        repo_name TEXT NOT NULL,        
-        user_id INTEGER,                
-        title TEXT,
-        status TEXT,
-        points INTEGER DEFAULT 0,
-        created_at TIMESTAMP,
-        updated_at TIMESTAMP,
+   CREATE TABLE IF NOT EXISTS pull_requests (
+        pr_id INTEGER UNIQUE NOT NULL,
+        repo_name TEXT NOT NULL,
+        github_login TEXT NOT NULL,
+        total_commits INTEGER DEFAULT 0,
+        total_lines INTEGER DEFAULT 0,
         PRIMARY KEY (pr_id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
+        FOREIGN KEY(github_login) REFERENCES users(github_id)
     );
+
 
     """)
     
     client.execute("""
     CREATE TABLE IF NOT EXISTS leaderboard (
-        user_id INTEGER PRIMARY KEY,
+        user_id INTEGER PRIMARY KEY,   
         total_prs INTEGER DEFAULT 0,
         total_commits INTEGER DEFAULT 0,
         total_lines INTEGER DEFAULT 0,
+        points INTEGER DEFAULT 0,
         FOREIGN KEY(user_id) REFERENCES users(id)
     );
     """)
