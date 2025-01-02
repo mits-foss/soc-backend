@@ -6,6 +6,7 @@ import requests
 from utils import fetch_user_repos
 
 load_dotenv()
+logging.basicConfig(level=logging.DEBUG)
 
 DB_PATH = os.getenv('SQLITE_DB_PATH','./app.db')
 
@@ -64,11 +65,11 @@ def setup_database():
 def save_user_to_db(github_user, email, phone, token):
     logging.debug(f"Inserting into users: {github_user['login']}, {github_user['name']}, {email}, {phone}, {token}")
     client.execute("""
-    INSERT OR IGNORE INTO users (github_id, name, email, phone_no, token)
+    INSERT OR REPLACE INTO users (github_id, name, email, phone_no, token)
     VALUES (?, ?, ?, ?, ?)
     """, (
         github_user['login'],  
-        github_user['name'],
+        github_user['name'] or 'N/A',  
         email,
         phone,
         token

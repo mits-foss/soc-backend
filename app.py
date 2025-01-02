@@ -38,9 +38,10 @@ def callback():
         token = get_github_token(code)
         ensure_db_connection()  # Ensure db.client is valid before use
         github_user = fetch_github_user(db.client, token)
+        logging.debug(f"GitHub user response: {github_user}")
 
         # Store GitHub user and token temporarily in the session
-        session['temp_user'] = github_user['login']
+        session['temp_user'] = github_user
         session['temp_token'] = token
 
         # Render form for email and phone input
@@ -49,22 +50,24 @@ def callback():
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")
         return redirect('/login')  # Retry OAuth flow
+
 @app.route('/submit_user', methods=['POST'])
 def submit_user():
     email = request.form['email']
     phone = request.form['phone']
     github_user = session.get('temp_user')
     token = session.get('temp_token')
+    
     logging.debug(f"Received: email={email}, phone={phone}, user={github_user}, token={token}")
-    # Verify if the email contains 'mgits'
+    
     if 'mgits' not in email:
-        return jsonify({'error': f"Received: email={email}, phone={phone}, user={github_user}, token={token}"})
-        logging.debug(f"Received: email={email}, phone={phone}, user={github_user}, token={token}")
-
-
+        return jsonify({'error': f"Invalid email. Received: email={email}, phone={phone}, user={github_user}, token={token}"})
+    
     try:
         ensure_db_connection()
-        # Save user details to DB
+        if not github_user or not token:
+            raise Exception("Missing GitHub user or token in session.")
+        
         db.save_user_to_db(github_user, email, phone, token)
         
         db.client.execute("""
@@ -75,7 +78,6 @@ def submit_user():
         db.client.commit()
 
         # Clear temp session data
-        session.pop('temp_user')
         session.pop('temp_token')
 
         session['user_id'] = github_user['id']
@@ -92,25 +94,36 @@ def refresh_login():
     db.client.execute("DELETE FROM api_keys WHERE key NOT IN (SELECT token FROM users)")
     db.client.commit()
     return redirect(get_github_login_url())
-
 @app.route('/dashboard')
 def dashboard():
-    users = db.get_all_users()
-    leaderboard = calculate_leaderboard(db.client)
-    
-    for user in users:
-        repos = fetch_user_repos(user['username'], db.client)
-        if repos is None:
-            return redirect('/refresh_login')  
-        user['repos'] = [
-            {
-                'repo_name': repo['name'],
-                'last_commit': repo['updated_at']
-            }
-            for repo in repos
-        ]
+    github_user = session.get('temp_user')
+    if not github_user:
+        return redirect('/login')  
 
-    return jsonify({'users': users, 'leaderboard': leaderboard})
+    try:
+        user = db.client.execute(
+            "SELECT * FROM users WHERE github_id = ?",
+            (github_user['login'],)
+        ).fetchone()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        repos = fetch_user_repos(github_user['login'], db.client)
+        user_data = {
+            'SOCid': user[0],
+            'username': user[1],
+            'email': user[3],
+            'repos': [
+                {
+                    'repo_name': repo['name'],
+                    'last_commit': repo['updated_at']
+                }
+                for repo in repos
+            ] if repos else []
+        }
+        return jsonify({'user': user_data})
+    except Exception as e:
+        logging.error(f"Failed to fetch dashboard: {str(e)}")
+        return jsonify({'error': 'Failed to load dashboard'}), 500
 
 @app.route('/token_status')
 def token_status():
