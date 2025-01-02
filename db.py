@@ -42,13 +42,18 @@ def setup_database():
     
     client.execute("""
     CREATE TABLE IF NOT EXISTS pull_requests (
-        id INTEGER PRIMARY KEY,
-        repo_name TEXT NOT NULL,
-        user_id INTEGER,
+        pr_id INTEGER UNIQUE NOT NULL,  
+        repo_name TEXT NOT NULL,        
+        user_id INTEGER,                
+        title TEXT,
         status TEXT,
         points INTEGER DEFAULT 0,
+        created_at TIMESTAMP,
+        updated_at TIMESTAMP,
+        PRIMARY KEY (pr_id),
         FOREIGN KEY(user_id) REFERENCES users(id)
     );
+
     """)
     
     client.execute("""
