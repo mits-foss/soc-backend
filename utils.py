@@ -86,7 +86,6 @@ def fetch_user_repos(username, client):
                 raise e
 
     raise Exception("All tokens failed or rate-limited.")
-
 def update_leaderboard(client):
     try:
         cursor = client.cursor()
@@ -97,25 +96,34 @@ def update_leaderboard(client):
         SELECT id, 0, 0, 0 FROM users
         """)
         
+        # Aggregate PRs, commits, and lines separately
         cursor.execute("""
-        INSERT INTO leaderboard (user_id, total_prs, total_commits, total_lines)
-        SELECT users.id, COUNT(pull_requests.pr_id), SUM(pull_requests.total_commits), SUM(pull_requests.total_lines)
+        UPDATE leaderboard
+        SET total_prs = (
+            SELECT COUNT(pr_id)
+            FROM pull_requests
+            WHERE pull_requests.github_login = users.github_id
+        ),
+        total_commits = (
+            SELECT SUM(total_commits)
+            FROM pull_requests
+            WHERE pull_requests.github_login = users.github_id
+        ),
+        total_lines = (
+            SELECT SUM(total_lines)
+            FROM pull_requests
+            WHERE pull_requests.github_login = users.github_id
+        )
         FROM users
-        JOIN pull_requests ON users.github_id = pull_requests.github_login
-        GROUP BY users.id
-        ON CONFLICT(user_id) DO UPDATE SET
-        total_prs = leaderboard.total_prs + excluded.total_prs,
-        total_commits = leaderboard.total_commits + excluded.total_commits,
-        total_lines = leaderboard.total_lines + excluded.total_lines;
+        WHERE leaderboard.user_id = users.id;
         """)
         
-        logging.debug("Leaderboard updated.")
+        logging.debug("Leaderboard updated successfully.")
         client.commit()
         cursor.close()
         
     except Exception as e:
         logging.error(f"Error updating leaderboard: {str(e)}")
-
 
 def load_filter_list():
     with open('filter.txt', 'r') as f:
