@@ -47,6 +47,7 @@ def setup_database():
         github_login TEXT NOT NULL,
         total_commits INTEGER DEFAULT 0,
         total_lines INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'open',
         PRIMARY KEY (pr_id),
         FOREIGN KEY(github_login) REFERENCES users(github_id)
     );
@@ -65,19 +66,40 @@ def setup_database():
     );
     """)
     logging.debug("Database setup complete.")
-
 def save_user_to_db(github_user, email, phone, token):
-    logging.debug(f"Inserting into users: {github_user['login']}, {github_user['name']}, {email}, {phone}, {token}")
-    client.execute("""
-    INSERT OR REPLACE INTO users (github_id, name, email, phone_no, token)
-    VALUES (?, ?, ?, ?, ?)
-    """, (
-        github_user['login'],  
-        github_user['name'] or 'N/A',  
-        email,
-        phone,
-        token
-    ))
+    logging.debug(f"Checking if user exists: {github_user['login']}")
+
+    # Check if the user already exists
+    existing_user = client.execute("""
+    SELECT id FROM users WHERE github_id = ?
+    """, (github_user['login'],)).fetchone()
+
+    if existing_user:
+        logging.debug(f"User {github_user['login']} exists. Updating record.")
+        client.execute("""
+        UPDATE users
+        SET name = ?, email = ?, phone_no = ?, token = ?
+        WHERE github_id = ?
+        """, (
+            github_user['name'] or 'N/A',
+            email,
+            phone,
+            token,
+            github_user['login']
+        ))
+    else:
+        logging.debug(f"User {github_user['login']} does not exist. Inserting new record.")
+        client.execute("""
+        INSERT INTO users (github_id, name, email, phone_no, token)
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            github_user['login'],  
+            github_user['name'] or 'N/A',  
+            email,
+            phone,
+            token
+        ))
+    
     client.commit()
 
 def get_all_users():

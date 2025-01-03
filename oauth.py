@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 import logging
 from utils import random_api_key, remove_invalid_key
-
+import time
 load_dotenv()
 
 CLIENT_ID = os.getenv('GITHUB_CLIENT_ID')
@@ -43,6 +43,8 @@ def fetch_github_user(client, token=None):
                 raise e
         
         attempts += 1
+        time.sleep(min(60 * attempts, 300))  # Exponential backoff (up to 5 mins)
+
     
     # Raise exception if no valid tokens are left after attempts
     raise Exception("All available tokens hit the rate limit.")

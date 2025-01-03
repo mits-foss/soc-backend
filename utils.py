@@ -86,42 +86,50 @@ def fetch_user_repos(username, client):
                 raise e
 
     raise Exception("All tokens failed or rate-limited.")
+
 def update_leaderboard(client):
     try:
         cursor = client.cursor()
-        
+
         # Ensure all users exist in leaderboard (initialize with 0s)
         cursor.execute("""
-        INSERT OR IGNORE INTO leaderboard (user_id, total_prs, total_commits, total_lines)
-        SELECT id, 0, 0, 0 FROM users
+        INSERT OR IGNORE INTO leaderboard (user_id, total_prs, total_commits, total_lines, points)
+        SELECT id, 0, 0, 0, 0 FROM users
         """)
-        
-        # Aggregate PRs, commits, and lines separately
+
+        # Update leaderboard with filtered PRs and status points
         cursor.execute("""
-        UPDATE leaderboard
-        SET total_prs = (
-            SELECT COUNT(pr_id)
-            FROM pull_requests
-            WHERE pull_requests.github_login = users.github_id
-        ),
-        total_commits = (
-            SELECT SUM(total_commits)
-            FROM pull_requests
-            WHERE pull_requests.github_login = users.github_id
-        ),
-        total_lines = (
-            SELECT SUM(total_lines)
-            FROM pull_requests
-            WHERE pull_requests.github_login = users.github_id
-        )
+        INSERT INTO leaderboard (user_id, total_prs, total_commits, total_lines, points)
+        SELECT users.id,
+               COUNT(DISTINCT pull_requests.repo_name), 
+               SUM(pull_requests.total_commits),
+               SUM(pull_requests.total_lines),
+               SUM(CASE WHEN pull_requests.status = 'merged' THEN 10 ELSE 5 END)
         FROM users
-        WHERE leaderboard.user_id = users.id;
+        JOIN pull_requests ON users.github_id = pull_requests.github_login
+        WHERE pull_requests.pr_id IN (
+            SELECT pr_id
+            FROM pull_requests
+            WHERE (repo_name, github_login, pr_id) IN (
+                SELECT repo_name, github_login, MAX(pr_id)
+                FROM pull_requests
+                WHERE status IN ('open', 'merged')
+                GROUP BY repo_name, github_login
+            )
+        )
+        GROUP BY users.id
+
+        ON CONFLICT(user_id) DO UPDATE SET
+        total_prs = excluded.total_prs,
+        total_commits = excluded.total_commits,
+        total_lines = excluded.total_lines,
+        points = excluded.points;
         """)
-        
-        logging.debug("Leaderboard updated successfully.")
+
+        logging.debug("Leaderboard updated.")
         client.commit()
         cursor.close()
-        
+
     except Exception as e:
         logging.error(f"Error updating leaderboard: {str(e)}")
 
@@ -134,7 +142,7 @@ def fetch_filtered_prs(client):
     pr_count = 0
     
     for repo in repos:
-        prs = fetch_recent_prs(repo, client)  
+        prs = fetch_recent_prs(repo, client)
         if not prs:
             logging.info(f"No PRs found for {repo}. Skipping...")
             continue
@@ -152,6 +160,7 @@ def fetch_filtered_prs(client):
 
             total_commits = pr_details.get('commits', 0)
             total_lines = pr_details.get('additions', 0) - pr_details.get('deletions', 0)
+            status = pr.get('state', 'open')
 
             user_exists = client.execute(
                 "SELECT 1 FROM users WHERE github_id = ?",
@@ -162,29 +171,31 @@ def fetch_filtered_prs(client):
                 logging.warning(f"User {github_login} not found. Skipping PR {pr['id']}.")
                 continue
 
+            # Check for existing PR from the same repo and user
             existing_pr = client.execute(
                 "SELECT pr_id FROM pull_requests WHERE pr_id = ?",
                 (pr['id'],)
             ).fetchone()
 
             if existing_pr:
-                logging.debug(f"PR {pr['id']} already exists. Updating...")
+                logging.debug(f"Updating existing PR {existing_pr[0]}")
                 client.execute("""
                 UPDATE pull_requests
-                SET total_commits = ?, total_lines = ?
+                SET total_commits = ?, total_lines = ?, status = ?
                 WHERE pr_id = ?
-                """, (total_commits, total_lines, pr['id']))
+                """, (total_commits, total_lines, status, existing_pr[0]))
             else:
                 logging.info(f"Inserting new PR {pr['id']}")
                 client.execute("""
-                INSERT INTO pull_requests (pr_id, repo_name, github_login, total_commits, total_lines)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO pull_requests (pr_id, repo_name, github_login, total_commits, total_lines, status)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     pr['id'],
                     repo,
                     github_login,
                     total_commits,
-                    total_lines
+                    total_lines,
+                    status
                 ))
                 pr_count += 1
 

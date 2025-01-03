@@ -27,7 +27,6 @@ def init_db():
 def login():
     return redirect(get_github_login_url())
 
-
 @app.route('/callback')
 def callback():
     code = request.args.get('code')
@@ -40,13 +39,28 @@ def callback():
         github_user = fetch_github_user(db.client, token)
         logging.debug(f"GitHub user response: {github_user}")
 
-        # Store GitHub user and token temporarily in the session
+        # Check if the user is already logged in (based on session)
+        if 'github_id' in session and session['github_id'] == github_user['login']:
+            logging.info(f"User {github_user['login']} already logged in. Redirecting to dashboard.")
+            return redirect('/dashboard')
+
+        # Check if the user exists in the database
+        existing_user = db.client.execute("""
+        SELECT * FROM users WHERE github_id = ?
+        """, (github_user['login'],)).fetchone()
+
+        if existing_user:
+            logging.info(f"User {github_user['login']} found in DB. Logging in directly.")
+            session['github_id'] = github_user['login']
+            session['user_id'] = existing_user[0]  # Store user ID in session
+            return redirect('/dashboard')
+        
+        # If user not found, ask for email/phone to create new entry
         session['temp_user'] = github_user
         session['temp_token'] = token
 
-        # Render form for email and phone input
         return render_template('email_phone_form.html', github_user=github_user)
-    
+
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")
         return redirect('/login')  # Retry OAuth flow
@@ -141,7 +155,7 @@ def api_key():
 def leaderboard():
     ensure_db_connection()
     leaderboard_data = db.client.execute("""
-    SELECT users.name, leaderboard.total_prs
+    SELECT users.name, leaderboard.total_prs,leaderboard.points
     FROM leaderboard
     JOIN users ON leaderboard.user_id = users.id
     ORDER BY leaderboard.total_prs DESC

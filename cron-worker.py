@@ -30,6 +30,7 @@ def cron_worker():
             # Reconnect to DB if connection is lost
             if client is None or client.isolation_level is None:
                 client = connect_db()
+                client.execute("SELECT 1").fetchone()  # Test DB connection
                 logging.info("Reconnected to database.")
 
             logging.info(f"Running PR fetch at {datetime.datetime.now()}")
