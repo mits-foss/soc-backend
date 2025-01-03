@@ -66,7 +66,7 @@ def setup_database():
     );
     """)
     logging.debug("Database setup complete.")
-def save_user_to_db(github_user, email, phone, token):
+def save_user_to_db(github_user, email, phone, token,SOCname):
     logging.debug(f"Checking if user exists: {github_user['login']}")
 
     # Check if the user already exists
@@ -81,7 +81,7 @@ def save_user_to_db(github_user, email, phone, token):
         SET name = ?, email = ?, phone_no = ?, token = ?
         WHERE github_id = ?
         """, (
-            github_user['name'] or 'N/A',
+            SOCname or 'N/A',
             email,
             phone,
             token,

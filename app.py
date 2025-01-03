@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, redirect, session, render_template,abort
 from oauth import get_github_login_url, fetch_github_user, get_github_token
-from utils import calculate_leaderboard, random_api_key, fetch_user_repos
+from utils import calculate_leaderboard, random_api_key, fetch_user_repos, load_filter_list
 import db
 import logging
 import os
@@ -69,6 +69,8 @@ def callback():
 def submit_user():
     email = request.form['email']
     phone = request.form['phone']
+    SOCname = request.form['name']
+    
     github_user = session.get('temp_user')
     token = session.get('temp_token')
     
@@ -82,7 +84,7 @@ def submit_user():
         if not github_user or not token:
             raise Exception("Missing GitHub user or token in session.")
         
-        db.save_user_to_db(github_user, email, phone, token)
+        db.save_user_to_db(github_user, email, phone, token,SOCname)
         
         db.client.execute("""
         INSERT INTO api_keys (key)
@@ -112,18 +114,29 @@ def refresh_login():
 
 @app.route('/dashboard')
 def dashboard():
-    github_user = session.get('github_id')
+    github_user = session.get('github_id') 
     if not github_user:
         return redirect('/login')  
 
     try:
         user = db.client.execute(
             "SELECT * FROM users WHERE github_id = ?",
-            (github_user['login'],)
+            (github_user,)
         ).fetchone()
+
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        repos = fetch_user_repos(github_user['login'], db.client)
+    
+        repos=fetch_user_repos(github_user,db.client)
+        allowed_repos=load_filter_list()
+
+        allowed_repo_names = {repo.split('/')[-1] for repo in allowed_repos}
+        filtered_repos = [
+            repo for repo in repos
+            if repo['name'] in allowed_repo_names
+        ]
+        
+        logging.debug(f"{repos}")
         user_data = {
             'SOCid': user[0],
             'username': user[1],
@@ -133,10 +146,11 @@ def dashboard():
                     'repo_name': repo['name'],
                     'last_commit': repo['updated_at']
                 }
-                for repo in repos
+                for repo in filtered_repos
             ] if repos else []
         }
         return jsonify({'user': user_data})
+
     except Exception as e:
         logging.error(f"Failed to fetch dashboard: {str(e)}")
         return jsonify({'error': 'Failed to load dashboard'}), 500
