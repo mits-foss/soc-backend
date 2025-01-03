@@ -111,7 +111,7 @@ def refresh_login():
     db.client.execute("DELETE FROM api_keys WHERE key NOT IN (SELECT token FROM users)")
     db.client.commit()
     return redirect(get_github_login_url())
-
+    
 @app.route('/dashboard')
 def dashboard():
     github_user = session.get('github_id') 
@@ -127,28 +127,46 @@ def dashboard():
         if not user:
             return jsonify({'error': 'User not found'}), 404
     
-        repos=fetch_user_repos(github_user,db.client)
-        allowed_repos=load_filter_list()
+        # Fetch repos directly from pull requests table
+        pr_repos = db.client.execute("""
+        SELECT DISTINCT repo_name FROM pull_requests WHERE github_login = ?
+        """, (github_user,)).fetchall()
 
+        # Fetch allowed repos from filter.txt
+        allowed_repos = load_filter_list()
         allowed_repo_names = {repo.split('/')[-1] for repo in allowed_repos}
+
+        # Filter PR repos based on allowed repos
         filtered_repos = [
-            repo for repo in repos
-            if repo['name'] in allowed_repo_names
+            {'repo_name': repo[0]}
+            for repo in pr_repos
+            if repo[0].split('/')[-1] in allowed_repo_names
         ]
-        
-        logging.debug(f"{repos}")
+
+        # Fetch user's pull requests for the "My Pull Requests" section
+        user_prs = db.client.execute("""
+        SELECT repo_name, status, pr_id
+        FROM pull_requests
+        WHERE github_login = ?
+        """, (github_user,)).fetchall()
+
+        pr_list = [
+            {
+                'repo_name': pr[0],
+                'status': pr[1],
+                'pr_id': pr[2]
+            }
+            for pr in user_prs
+        ]
+
         user_data = {
             'SOCid': user[0],
             'username': user[1],
             'email': user[3],
-            'repos': [
-                {
-                    'repo_name': repo['name'],
-                    'last_commit': repo['updated_at']
-                }
-                for repo in filtered_repos
-            ] if repos else []
+            'contributed_repos': filtered_repos,
+            'pull_requests': pr_list
         }
+
         return jsonify({'user': user_data})
 
     except Exception as e:

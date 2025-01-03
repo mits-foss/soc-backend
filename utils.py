@@ -101,23 +101,19 @@ def update_leaderboard(client):
         cursor.execute("""
         INSERT INTO leaderboard (user_id, total_prs, total_commits, total_lines, points)
         SELECT users.id,
-               COUNT(DISTINCT pull_requests.repo_name), 
-               SUM(pull_requests.total_commits),
-               SUM(pull_requests.total_lines),
-               SUM(CASE WHEN pull_requests.status = 'merged' THEN 10 ELSE 5 END)
+       COUNT(DISTINCT pull_requests.repo_name), 
+       SUM(pull_requests.total_commits),
+       SUM(pull_requests.total_lines),
+       SUM(CASE WHEN pull_requests.status = 'merged' THEN 10 ELSE 5 END)
         FROM users
         JOIN pull_requests ON users.github_id = pull_requests.github_login
         WHERE pull_requests.pr_id IN (
-            SELECT pr_id
+            SELECT MAX(pr_id)
             FROM pull_requests
-            WHERE (repo_name, github_login, pr_id) IN (
-                SELECT repo_name, github_login, MAX(pr_id)
-                FROM pull_requests
-                WHERE status IN ('open', 'merged')
-                GROUP BY repo_name, github_login
-            )
+            GROUP BY repo_name, github_login
         )
         GROUP BY users.id
+
 
         ON CONFLICT(user_id) DO UPDATE SET
         total_prs = excluded.total_prs,
