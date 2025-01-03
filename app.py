@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, redirect, session, render_template
+from flask import Flask, jsonify, request, redirect, session, render_template,abort
 from oauth import get_github_login_url, fetch_github_user, get_github_token
 from utils import calculate_leaderboard, random_api_key, fetch_user_repos
 import db
@@ -88,6 +88,7 @@ def submit_user():
         INSERT INTO api_keys (key)
         VALUES (?)
         ON CONFLICT(key) DO NOTHING
+        
         """, (token,))
         db.client.commit()
 
@@ -108,9 +109,10 @@ def refresh_login():
     db.client.execute("DELETE FROM api_keys WHERE key NOT IN (SELECT token FROM users)")
     db.client.commit()
     return redirect(get_github_login_url())
+
 @app.route('/dashboard')
 def dashboard():
-    github_user = session.get('temp_user')
+    github_user = session.get('github_id')
     if not github_user:
         return redirect('/login')  
 
@@ -162,6 +164,59 @@ def leaderboard():
     """).fetchall()
 
     return jsonify({'leaderboard': leaderboard_data})
+
+@app.route('/webhook', methods=['POST'])
+def github_webhook():
+    payload = request.json
+    event = request.headers.get('X-GitHub-Event', '')
+
+    if not payload or 'pull_request' not in payload:
+        abort(400)
+
+    pr = payload['pull_request']
+    action = payload.get('action')
+
+    if action in ['opened', 'synchronize', 'closed']:
+        repo = payload['repository']['full_name']
+        github_login = pr['user']['login']
+        pr_id = pr['id']
+        commits = pr['commits']
+        additions = pr['additions']
+        deletions = pr['deletions']
+        status = 'merged' if pr.get('merged', False) else pr['state']
+
+        ensure_db_connection()
+        db.client.execute("""
+        INSERT INTO pull_requests (pr_id, repo_name, github_login, total_commits, total_lines, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(pr_id) DO UPDATE SET
+        total_commits = excluded.total_commits,
+        total_lines = excluded.total_lines,
+        status = excluded.status
+        """, (pr_id, repo, github_login, commits, additions - deletions, status))
+
+        db.client.commit()
+        update_leaderboard(db.client)
+
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/user/<github_id>/prs')
+def user_prs(github_id):
+    limit = request.args.get('limit', 10)
+    offset = request.args.get('offset', 0)
+    user_prs = db.client.execute("""
+    SELECT pr_id, repo_name, total_commits, total_lines, status
+    FROM pull_requests
+    WHERE github_login = ?
+    LIMIT ? OFFSET ?
+    """, (github_id, limit, offset)).fetchall()
+
+    if not user_prs:
+        return jsonify({'message': 'No PRs found'}), 404
+
+    pr_list = [{'pr_id': pr[0], 'repo': pr[1], 'commits': pr[2], 'lines': pr[3], 'status': pr[4]} for pr in user_prs]
+    return jsonify({'prs': pr_list})
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
