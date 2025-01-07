@@ -36,6 +36,7 @@ def setup_database():
     CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY,
         key TEXT NOT NULL,
+        github_id TEXT NOT NULL,
         UNIQUE(key)
     );
     """)

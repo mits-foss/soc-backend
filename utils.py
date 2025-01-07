@@ -47,13 +47,23 @@ def calculate_leaderboard(client):
     result.sort(key=lambda x: x[1], reverse=True)
     return result
 
-
 def random_api_key(client):
-    res = client.execute("SELECT key FROM api_keys")
-    res=list(res)
+    current_user = session.get('github_id')
+    
+    if not current_user:
+        raise Exception("User not logged in. Cannot fetch API key.")
+    
+    res = client.execute("""
+        SELECT key FROM api_keys
+        WHERE github_id = ?
+    """, (current_user,)).fetchall()
+    
+    res = list(res)
     if not res:
-        raise Exception("No API keys available. Please log in users to add tokens.")
+        raise Exception("No API keys available for current user.")
+    
     return random.choice(res)[0]
+
     
 def remove_invalid_key(client, key):
     logging.warning(f"Removing token {key} from db due to invalidity.")
@@ -61,31 +71,34 @@ def remove_invalid_key(client, key):
     client.commit()
 
 def fetch_user_repos(username, client):
-    tokens = client.execute("SELECT key FROM api_keys").fetchall()
+    tokens = client.execute("""
+        SELECT key FROM api_keys WHERE github_id = ?
+    """, (username,)).fetchall()
 
     if not tokens:
         logging.warning("No tokens available. Redirecting to refresh login.")
         return None
 
-    random.shuffle(tokens)  # Shuffle tokens for random access
+    random.shuffle(tokens)
     for token in tokens:
         url = f"https://api.github.com/users/{username}/repos"
         headers = {'Authorization': f'token {token[0]}'}
-
+        
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             return response.json()
         
         except requests.exceptions.HTTPError as e:
-            if response.status_code in [401, 403]:  # Unauthorized or rate-limited
-                logging.error(f"Token {token[0]} failed (status {response.status_code}). Removing...")
+            if response.status_code in [401, 403]:
+                logging.error(f"Token {token[0]} failed. Removing...")
                 remove_invalid_key(client, token[0])
             else:
-                logging.error(f"Failed to fetch repos for {username}: {e}")
+                logging.error(f"Failed to fetch repos: {e}")
                 raise e
 
     raise Exception("All tokens failed or rate-limited.")
+
 
 def update_leaderboard(client):
     try:

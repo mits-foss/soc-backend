@@ -87,12 +87,12 @@ def submit_user():
         db.save_user_to_db(github_user, email, phone, token,SOCname)
         
         db.client.execute("""
-        INSERT INTO api_keys (key)
-        VALUES (?)
-        ON CONFLICT(key) DO NOTHING
-        
-        """, (token,))
+            INSERT INTO api_keys (key, github_id)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO NOTHING
+        """, (token, github_user['login']))
         db.client.commit()
+
 
         # Clear temp session data
         session.pop('temp_token')
@@ -111,7 +111,7 @@ def refresh_login():
     db.client.execute("DELETE FROM api_keys WHERE key NOT IN (SELECT token FROM users)")
     db.client.commit()
     return redirect(get_github_login_url())
-    
+
 @app.route('/dashboard')
 def dashboard():
     github_user = session.get('github_id') 
@@ -143,7 +143,6 @@ def dashboard():
             if repo[0].split('/')[-1] in allowed_repo_names
         ]
 
-        # Fetch user's pull requests for the "My Pull Requests" section
         user_prs = db.client.execute("""
         SELECT repo_name, status, pr_id
         FROM pull_requests
