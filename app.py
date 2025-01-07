@@ -87,12 +87,12 @@ def submit_user():
         db.save_user_to_db(github_user, email, phone, token,SOCname)
         
         db.client.execute("""
-            INSERT INTO api_keys (key, github_id)
-            VALUES (?, ?)
-            ON CONFLICT(key) DO NOTHING
-        """, (token, github_user['login']))
+        INSERT INTO api_keys (key)
+        VALUES (?)
+        ON CONFLICT(key) DO NOTHING
+        
+        """, (token,))
         db.client.commit()
-
 
         # Clear temp session data
         session.pop('temp_token')
