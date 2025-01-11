@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request, redirect, session, render_template,abort
+from flask_cors import CORS
 from oauth import get_github_login_url, fetch_github_user, get_github_token
 from utils import calculate_leaderboard, fetch_user_repos, load_filter_list, update_leaderboard
 import db
@@ -8,6 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretWOOOOOOOOOOOO')
 
 logging.basicConfig(level=logging.DEBUG)
@@ -25,7 +28,8 @@ def init_db():
 
 @app.route('/login')
 def login():
-    return redirect(get_github_login_url())
+    link = get_github_login_url()
+    return link
 
 @app.route('/callback')
 def callback():
@@ -58,8 +62,8 @@ def callback():
         # If user not found, ask for email/phone to create new entry
         session['temp_user'] = github_user
         session['temp_token'] = token
-
-        return render_template('email_phone_form.html', github_user=github_user)
+        print(session)
+        return token
 
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")

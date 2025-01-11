@@ -18,7 +18,7 @@ def calculate_leaderboard(client):
     GROUP BY users.name
     ORDER BY pr_count DESC;
     """)
-    return list(res)
+    return list(pr_list)
 
 def fetch_user_repos(username, client):
     max_attempts = 3

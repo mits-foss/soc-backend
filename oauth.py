@@ -2,7 +2,6 @@ import requests
 import os
 from dotenv import load_dotenv
 import logging
-from utils import random_api_key, remove_invalid_key
 import time
 load_dotenv()
 
