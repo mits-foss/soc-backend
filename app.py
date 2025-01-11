@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, redirect, session
 from oauth import get_github_login_url, fetch_github_user, get_github_token
-from utils import calculate_leaderboard, random_api_key, fetch_user_repos
+from utils import calculate_leaderboard, fetch_user_repos
 import db
 import logging
 import os
@@ -49,6 +49,7 @@ def callback():
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")
         return redirect('/login')  # Retry OAuth flow
+
 @app.route('/refresh_login')
 def refresh_login():
     session.clear()
@@ -72,11 +73,6 @@ def dashboard():
         ]
 
     return jsonify({'users': users, 'leaderboard': leaderboard})
-
-@app.route('/random_api_key')
-def api_key():
-    key = random_api_key(db.client)
-    return jsonify({'api_key': key})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

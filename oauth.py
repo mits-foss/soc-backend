@@ -17,8 +17,6 @@ def fetch_github_user(client,token=None):
     max_attempts=3
     attempts =0
     while attempts<max_attempts:
-        if not token:
-            token=random_api_key(client)
         headers= {'Authorization': f'token {token}'}   #Auth headers, to be used in request, geenrally used in axios, can include cookies for extra auth, remember if https
 
         try:
