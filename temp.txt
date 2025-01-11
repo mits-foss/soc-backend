@@ -1,0 +1,30 @@
+    # Check if the user already exists
+    existing_user = client.execute("""
+    SELECT id FROM users WHERE github_id = ?
+    """, (github_user['login'],)).fetchone()
+
+    if existing_user:
+        logging.debug(f"User {github_user['login']} exists. Updating record.")
+        client.execute("""
+        UPDATE users
+        SET name = ?, email = ?, phone_no = ?, token = ?
+        WHERE github_id = ?
+        """, (
+            SOCname or 'N/A',
+            email,
+            phone,
+            token,
+            github_user['login']
+        ))
+    else:
+        logging.debug(f"User {github_user['login']} does not exist. Inserting new record.")
+        client.execute("""
+        INSERT INTO users (github_id, name, email, phone_no, token)
+        VALUES (?, ?, ?, ?, ?)
+        """, (
+            github_user['login'],  
+            github_user['name'] or 'N/A',  
+            email,
+            phone,
+            token
+        ))

@@ -5,3 +5,6 @@ __pycache__
 *.db
 app.db
 *.db
+app.db
+app.db
+*.db
