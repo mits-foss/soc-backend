@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, redirect, session, render_template,abort
 from flask_cors import CORS
-from oauth import get_github_login_url, fetch_github_user, get_github_token
+from oauth import fetch_github_user, get_github_token
 from utils import calculate_leaderboard, fetch_user_repos, load_filter_list, update_leaderboard
 import db
 import logging
@@ -12,6 +12,7 @@ app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretWOOOOOOOOOOOO')
+REDIRECT_URL = os.getenv('REDIRECT_URL', 'http://localhost:5173/finish')
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -26,44 +27,21 @@ def init_db():
         db.setup_database()
         app.db_initialized = True
 
-@app.route('/login')
-def login():
-    link = get_github_login_url()
-    return link
 
 @app.route('/callback')
 def callback():
     code = request.args.get('code')
     if not code:
         return jsonify({'error': 'Missing code parameter'}), 400
-
     try:
         token = get_github_token(code)
-        ensure_db_connection()  # Ensure db.client is valid before use
-        github_user = fetch_github_user(db.client, token)
+        github_user = fetch_github_user(token)
         logging.debug(f"GitHub user response: {github_user}")
-
-        # Check if the user is already logged in (based on session)
-        if 'github_id' in session and session['github_id'] == github_user['login']:
-            logging.info(f"User {github_user['login']} already logged in. Redirecting to dashboard.")
-            return redirect('/dashboard')
-
-        # Check if the user exists in the database
-        existing_user = db.client.execute("""
-        SELECT * FROM users WHERE github_id = ?
-        """, (github_user['login'],)).fetchone()
-
-        if existing_user:
-            logging.info(f"User {github_user['login']} found in DB. Logging in directly.")
-            session['github_id'] = github_user['login']
-            session['user_id'] = existing_user[0]  # Store user ID in session
-            return redirect('/dashboard')
-        
-        # If user not found, ask for email/phone to create new entry
-        session['temp_user'] = github_user
-        session['temp_token'] = token
-        print(session)
-        return token
+        info = [github_user['login'],github_user['id'],github_user['avatar_url'],github_user['html_url']]
+        logging.info(info)
+        return redirect(f"{REDIRECT_URL}/?login={info[0]}&id={info[1]}&avatar_url={info[2]}&html_url={info[3]}")
+        # return info
+    
 
     except Exception as e:
         logging.error(f"OAuth callback error: {str(e)}")

@@ -9,12 +9,8 @@ CLIENT_ID = os.getenv('GITHUB_CLIENT_ID')
 CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET')
 REDIRECT_URI = os.getenv('REDIRECT_URI', 'http://localhost:5000/callback')
 
-def get_github_login_url():
-    return (
-        f"https://github.com/login/oauth/authorize"
-        f"?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=repo,user"
-    )
-def fetch_github_user(client,token=None):
+
+def fetch_github_user(token=None) :
     max_attempts=3
     attempts =0
     while attempts<max_attempts:
@@ -29,7 +25,6 @@ def fetch_github_user(client,token=None):
             # Handle rate limit (403) by rotating the token
             if response.status_code == 403:
                 logging.error(f"Token {token} hit rate limit. Rotating...")
-                remove_invalid_key(client, token)  # Remove the invalid token from DB
                 token = None  # Force token refresh
             else:
                 # Log the error and re-raise it for higher-level handling
@@ -61,9 +56,6 @@ def get_github_token(code):
     except requests.exceptions.JSONDecodeError:
         logging.error(f"Non-JSON response from GitHub: {response.text}")
         raise Exception("Failed to retrieve access token: GitHub returned non-JSON response")
-
-    # Log full response for debugging purposes
-    logging.debug(f"OAuth Response: {data}")
 
     # Handle OAuth error case
     if 'access_token' not in data:
