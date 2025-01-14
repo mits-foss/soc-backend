@@ -1,110 +1,221 @@
-from fastapi import FastAPI, HTTPException, Path
-from typing import List, Annotated
-import httpx 
-from odmantic import Field, Model, EmbeddedModel, AIOEngine, ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import RedirectResponse
-from dotenv import load_dotenv
+from flask import Flask, jsonify, request, redirect, session, render_template,abort
+from flask_cors import CORS
+from oauth import fetch_github_user, get_github_token
+from utils import calculate_leaderboard, fetch_user_repos, load_filter_list, update_leaderboard
+import db
+import logging
 import os
-
-app = FastAPI(debug=True)
-
+from re import match 
+from dotenv import load_dotenv
 load_dotenv()
-engine = AIOEngine(client=AsyncIOMotorClient(os.getenv("MONGO_URI")),database="soc")
-GITHUB_CLIENT_ID = os.getenv("CLIENT_ID")
-GITHUB_CLIENT_SECRET = os.getenv("CLIENT_SECRET")
-REDIRECT_URL = os.getenv("REDIRECT_URL")
+
+app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
+app.secret_key = os.getenv('SECRET_KEY', 'supersecretWOOOOOOOOOOOO')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173/finish')
+
+logging.basicConfig(level=logging.DEBUG)
+
+# Ensure DB connection is valid
+def ensure_db_connection():
+    logging.warning(f"db.client type before check: {type(db.client)}")
+    db.client = db.connect_db()
+
+@app.before_request
+def init_db():
+    if not hasattr(app, 'db_initialized'):
+        db.setup_database()
+        app.db_initialized = True
 
 
-class PullRequest(EmbeddedModel):
-    repo: str = Field(...)
-    status: str = Field(...)
-
-class User(Model):
-    usertoken: str = Field(default="")
-    name: str = Field(...)
-    phone_no: int = Field(...)
-    clg_mail: str = Field(...)
-    avatar: str = Field(...)
-    points: int = Field(default=0)
-    github: str = Field(default="")
-    access_token: str = Field(default="")
-    prs: List[PullRequest] = Field(default_factory=list)
-
-class WebUser():
-    usertoken: str
-    name: str 
-    phone_no: int 
-    clg_mail: str 
-    github: str
-    avatar: str 
-
-
-@app.get("/")
-async def read_root():
-    user = User(usertoken=str(ObjectId()), name="Advaith",phone_no=123345456,clg_mail="advaith@glitchy.systems",github_token="lm",avatar="htts")
-    await engine.save(user)
-
-
-@app.post("/signup")
-async def read_item(user: User):
-    print(user)
-    user.usertoken = str(user.id)
-    await engine.save(user)
-    return user.usertoken
-
-
-@app.get("/user/{usertoken}")
-async def get_user(usertoken: Annotated[str, Path(title="The ID of the item to get")]):
-    print(usertoken)
-    user = await engine.find_one(User, User.usertoken == usertoken)
-    print(user)
-    return jsonable_encoder(user)
-
-@app.get("/login")
-async def github_login(usertoken):
-    if usertoken:
-        user = engine.find_one(User, User.usertoken == usertoken)
-        async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {user.access_token}"})
-            if response.status_code == 200:
-                return jsonable_encoder(user)
-
-    return RedirectResponse(f"https://github.com/login/oauth/authorize?client_id={GITHUB_CLIENT_ID}&redirect_uri={REDIRECT_URL}")
-
-@app.get("/callback")
-async def github_callback(code: str):
-    print(code)
-    params = {
-        "client_id": GITHUB_CLIENT_ID,
-        "client_secret": GITHUB_CLIENT_SECRET,
-        "code": code
-    }
-    headers = {"Accept": "application/json"}
-    async with httpx.AsyncClient() as client:
-        response = await client.post("https://github.com/login/oauth/access_token", params=params, headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        print(data)
-        access_token = data.get("access_token")
-        if not access_token:
-            raise HTTPException(status_code=400, detail="Failed to obtain access token")
-    else:
-        raise HTTPException(status_code=400, detail="Failed to exchange code for access token")
-    
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.get("https://api.github.com/user", headers={"Authorization": f"Bearer {access_token}"})
+@app.route('/callback')
+def callback():
+    code = request.args.get('code')
+    if not code:
+        return jsonify({'error': 'Missing code parameter'}), 400
+    try:
+        token = get_github_token(code)
+        try:
+            ensure_db_connection()
+            db.save_token(token)
+        except Exception as e:
+            return jsonify({'error': f"{e}"})
         
-    data = response.json()
-    username = data["login"]
-    avatar_url = data["avatar_url"]
-    user_url = data["html_url"]
-    return [access_token,username,avatar_url,user_url]
+        github_user = fetch_github_user(token)
+        logging.debug(f"GitHub user response: {github_user}")
+        info = [github_user['login'],github_user['avatar_url'],github_user['html_url']]
+        logging.info(info)
+        return redirect(f"{FRONTEND_URL}/finish/?login={info[0]}&avatar_url={info[1]}&html_url={info[2]}")
+
+    except Exception as e:
+        logging.error(f"OAuth callback error: {str(e)}")
+        return redirect(f'{FRONTEND_URL}/')  # Retry OAuth flow
+
+@app.route('/register', methods=['POST'])
+def submit_user():
+    # Get data as json
+    data = request.get_json()
     
-@app.post("/register")
-async def user_register(user: User):
-    if user:
-        engine.save(user)
+    name = data.get('name')
+    contact = data.get('contact')
+    email = data.get('email')
+    
+    # Further parse user data
+    user = data.get('user')
+    
+    github_user = str(user['login'])
+    avatar = str(user['avatar'])
+    link = str(user['html_url'])
+    
+    
+    logging.debug(f"Received: email={email}, phone={contact}, name={name}, token={user}")
+    
+    # Checking for validity
+    if len(contact) < 10:
+        return jsonify({'error': f"Invalid phone number. Received the number {contact}, which is not an valid Indian mobile number"})
+    
+    if not match(r'^\d{2}(cs|ct|ad|me|ce|ee|ec|cy)\d{3}@mgits\.ac\.in$', email):
+        return jsonify({'error': f"Invalid email. Received the email {email}, which is not an valid mgits email"})
+    
+    # Adding user to the database
+    try:
+        ensure_db_connection()
+        if not github_user:
+            raise Exception("Missing GitHub user or token in session.")
+        logging.warning(type(avatar))
+        db.save_user_to_db(github_user, name, email, contact, avatar, link)        
+        
+        return jsonify({'success': 'Request completed sucessfully'})
+    
+    except Exception as e:
+        return jsonify({'error': f"{e}"})
+        
+
+@app.route('/dashboard')
+def dashboard():
+    github_user = session.get('github_id') 
+    if not github_user:
+        return redirect('/login')  
+
+    try:
+        user = db.client.execute(
+            "SELECT * FROM users WHERE github_id = ?",
+            (github_user,)
+        ).fetchone()
+
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+    
+        # Fetch repos directly from pull requests table
+        pr_repos = db.client.execute("""
+        SELECT DISTINCT repo_name FROM pull_requests WHERE github_login = ?
+        """, (github_user,)).fetchall()
+
+        # Fetch allowed repos from filter.txt
+        allowed_repos = load_filter_list()
+        allowed_repo_names = {repo.split('/')[-1] for repo in allowed_repos}
+
+        # Filter PR repos based on allowed repos
+        filtered_repos = [
+            {'repo_name': repo[0]}
+            for repo in pr_repos
+            if repo[0].split('/')[-1] in allowed_repo_names
+        ]
+
+        user_prs = db.client.execute("""
+        SELECT repo_name, status, pr_id
+        FROM pull_requests
+        WHERE github_login = ?
+        """, (github_user,)).fetchall()
+
+        pr_list = [
+            {
+                'repo_name': pr[0],
+                'status': pr[1],
+                'pr_id': pr[2]
+            }
+            for pr in user_prs
+        ]
+
+        user_data = {
+            'SOCid': user[0],
+            'username': user[1],
+            'email': user[3],
+            'contributed_repos': filtered_repos,
+            'pull_requests': pr_list
+        }
+
+        return jsonify({'user': user_data})
+
+    except Exception as e:
+        logging.error(f"Failed to fetch dashboard: {str(e)}")
+        return jsonify({'error': 'Failed to load dashboard'}), 500
+
+@app.route('/leaderboard')
+def leaderboard():
+    ensure_db_connection()
+    leaderboard_data = db.client.execute("""
+    SELECT users.name, leaderboard.total_prs,leaderboard.points
+    FROM leaderboard
+    JOIN users ON leaderboard.user_id = users.id
+    ORDER BY leaderboard.total_prs DESC
+    """).fetchall()
+
+    return jsonify({'leaderboard': leaderboard_data})
+
+@app.route('/webhook', methods=['POST'])
+def github_webhook():
+    payload = request.json
+    event = request.headers.get('X-GitHub-Event', '')
+
+    if not payload or 'pull_request' not in payload:
+        abort(400)
+
+    pr = payload['pull_request']
+    action = payload.get('action')
+
+    if action in ['opened', 'synchronize', 'closed']:
+        repo = payload['repository']['full_name']
+        github_login = pr['user']['login']
+        pr_id = pr['id']
+        commits = pr['commits']
+        additions = pr['additions']
+        deletions = pr['deletions']
+        status = 'merged' if pr.get('merged', False) else pr['state']
+
+        ensure_db_connection()
+        db.client.execute("""
+        INSERT INTO pull_requests (pr_id, repo_name, github_login, total_commits, total_lines, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(pr_id) DO UPDATE SET
+        total_commits = excluded.total_commits,
+        total_lines = excluded.total_lines,
+        status = excluded.status
+        """, (pr_id, repo, github_login, commits, additions - deletions, status))
+
+        db.client.commit()
+        update_leaderboard(db.client)
+
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/user/<github_id>/prs')
+def user_prs(github_id):
+    limit = request.args.get('limit', 10)
+    offset = request.args.get('offset', 0)
+    user_prs = db.client.execute("""
+    SELECT pr_id, repo_name, total_commits, total_lines, status
+    FROM pull_requests
+    WHERE github_login = ?
+    LIMIT ? OFFSET ?
+    """, (github_id, limit, offset)).fetchall()
+
+    if not user_prs:
+        return jsonify({'message': 'No PRs found'}), 404
+
+    pr_list = [{'pr_id': pr[0], 'repo': pr[1], 'commits': pr[2], 'lines': pr[3], 'status': pr[4]} for pr in user_prs]
+    return jsonify({'prs': pr_list})
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

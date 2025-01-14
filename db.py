@@ -24,11 +24,12 @@ def setup_database():
     client.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
-        github_id TEXT UNIQUE NOT NULL,
+        github_user TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         email TEXT,
-        phone_no TEXT,  
-        token TEXT NOT NULL
+        contact TEXT,  
+        avatar TEXT,
+        link TEXT 
     );
     """)
     
@@ -36,12 +37,11 @@ def setup_database():
     CREATE TABLE IF NOT EXISTS pull_requests (
         id INTEGER PRIMARY KEY,
         repo_name TEXT NOT NULL,
-        github_login TEXT NOT NULL,
+        github_user TEXT NOT NULL,
         total_commits INTEGER DEFAULT 0,
         total_lines INTEGER DEFAULT 0,
         status TEXT DEFAULT 'open',
-        PRIMARY KEY (pr_id),
-        FOREIGN KEY(github_login) REFERENCES users(github_id)
+        FOREIGN KEY(github_user) REFERENCES users(github_user)
     );
 
 
@@ -49,23 +49,36 @@ def setup_database():
     
     client.execute("""
     CREATE TABLE IF NOT EXISTS leaderboard (
-        user_id INTEGER PRIMARY KEY,   
+        id INTEGER PRIMARY KEY,
         total_prs INTEGER DEFAULT 0,
         total_commits INTEGER DEFAULT 0,
         total_lines INTEGER DEFAULT 0,
         points INTEGER DEFAULT 0,
-        FOREIGN KEY(user_id) REFERENCES users(id)
+        FOREIGN KEY(id) REFERENCES users(id)
     );
     """)
-    logging.debug("Database setup complete.")
-def save_user_to_db(github_user, email, phone, token,SOCname):
-    logging.debug(f"Checking if user exists: {github_user['login']}")
-
-def save_user_to_db(github_user, token):
+    
+    
     client.execute("""
-    INSERT OR REPLACE INTO users (github_id, name, email, token)
-    VALUES (?, ?, ?, ?)
-    """, (github_user['id'], github_user['login'], github_user.get('email', ''), token))
+    CREATE TABLE IF NOT EXISTS tokens (
+        token TEXT
+    );
+    """)
+    
+    logging.debug("Database setup complete.")
+
+def save_user_to_db(github_user, name, email, contact, avatar, link):
+    client.execute("""
+    INSERT OR REPLACE INTO users (github_user, name, email, contact, avatar, link)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (github_user, name, email, contact, avatar, link))
+    
+    client.commit()
+def save_token(token):
+    client.execute("""
+    INSERT OR REPLACE INTO tokens (token)
+    VALUES (?)
+    """, (token,))
     
     client.commit()
 

@@ -3,8 +3,3 @@ __pycache__
 .venv
 .DS_Store
 *.db
-app.db
-*.db
-app.db
-app.db
-*.db
