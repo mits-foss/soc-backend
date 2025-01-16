@@ -1,30 +1,28 @@
-    # Check if the user already exists
-    existing_user = client.execute("""
-    SELECT id FROM users WHERE github_id = ?
-    """, (github_user['login'],)).fetchone()
+User
+id INTEGER PRIMARY KEY,
+github_user TEXT UNIQUE NOT NULL,
+name TEXT NOT NULL,
+email TEXT,
+contact TEXT,  
+avatar TEXT,
+link TEXT 
 
-    if existing_user:
-        logging.debug(f"User {github_user['login']} exists. Updating record.")
-        client.execute("""
-        UPDATE users
-        SET name = ?, email = ?, phone_no = ?, token = ?
-        WHERE github_id = ?
-        """, (
-            SOCname or 'N/A',
-            email,
-            phone,
-            token,
-            github_user['login']
-        ))
-    else:
-        logging.debug(f"User {github_user['login']} does not exist. Inserting new record.")
-        client.execute("""
-        INSERT INTO users (github_id, name, email, phone_no, token)
-        VALUES (?, ?, ?, ?, ?)
-        """, (
-            github_user['login'],  
-            github_user['name'] or 'N/A',  
-            email,
-            phone,
-            token
-        ))
+Pull Requests
+id INTEGER PRIMARY KEY,
+repo_name TEXT NOT NULL,
+github_user TEXT NOT NULL,
+total_commits INTEGER DEFAULT 0,
+total_lines INTEGER DEFAULT 0,
+status TEXT DEFAULT 'open',
+FOREIGN KEY(github_user) REFERENCES users(github_user)
+    
+Leaderboard
+id INTEGER PRIMARY KEY,
+total_prs INTEGER DEFAULT 0,
+total_commits INTEGER DEFAULT 0,
+total_lines INTEGER DEFAULT 0,
+points INTEGER DEFAULT 0,
+FOREIGN KEY(id) REFERENCES users(id)
+
+Tokens
+token TEXT

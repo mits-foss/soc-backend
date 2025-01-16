@@ -12,7 +12,6 @@ load_dotenv()
 
 os.getenv('CRON_TOKEN')
 
-# Most of this code is GPT, i no no know how to make cron, forgive me :pensive:
 logging.basicConfig(level=logging.DEBUG)
 
 

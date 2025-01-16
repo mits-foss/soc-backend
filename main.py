@@ -91,16 +91,14 @@ def submit_user():
     except Exception as e:
         return jsonify({'error': f"{e}"})
         
-
+        
 @app.route('/dashboard')
 def dashboard():
     github_user = session.get('github_id') 
-    if not github_user:
-        return redirect('/login')  
 
     try:
         user = db.client.execute(
-            "SELECT * FROM users WHERE github_id = ?",
+            "SELECT * FROM users WHERE github_user = ?",
             (github_user,)
         ).fetchone()
 
@@ -109,7 +107,7 @@ def dashboard():
     
         # Fetch repos directly from pull requests table
         pr_repos = db.client.execute("""
-        SELECT DISTINCT repo_name FROM pull_requests WHERE github_login = ?
+        SELECT DISTINCT repo_name FROM pull_requests WHERE github_user = ?
         """, (github_user,)).fetchall()
 
         # Fetch allowed repos from filter.txt
@@ -124,9 +122,9 @@ def dashboard():
         ]
 
         user_prs = db.client.execute("""
-        SELECT repo_name, status, pr_id
+        SELECT repo_name, status, id
         FROM pull_requests
-        WHERE github_login = ?
+        WHERE github_user = ?
         """, (github_user,)).fetchall()
 
         pr_list = [
